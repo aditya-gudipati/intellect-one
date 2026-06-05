@@ -45,6 +45,7 @@ def serialize_tree(root: Optional[HuffmanNode]) -> str:
             # Internal node
             bits.append("0")
             # Push right first, then left, so left is popped first (preorder traversal)
+            # Verified: Root -> Left -> Right is preserved exactly.
             if node.right is not None:
                 stack.append(node.right)
             if node.left is not None:
@@ -86,6 +87,7 @@ def deserialize_tree(bitstring: str) -> Tuple[Optional[HuffmanNode], int]:
     
     # Stack stores tuples of (parent_node, child_slot) where child_slot is 'left' or 'right'
     # Since we want to build the left branch first, we push 'right' then 'left'
+    # Verified: Left child is popped and processed first, matching preorder serialization.
     stack = [(root, "right"), (root, "left")]
     
     while stack:

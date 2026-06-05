@@ -134,8 +134,8 @@ def read_compressed(filepath: str) -> Tuple[str, str]:
         tree_padding = tree_padding_byte[0]
         
         # Calculate tree bytes length
-        # padded tree bits length is tree_len + tree_padding, which must be a multiple of 8
-        tree_bytes_len = (tree_len + tree_padding) // 8
+        # Using correct ceiling division to compute tree_bytes_len
+        tree_bytes_len = (tree_len + tree_padding + 7) // 8
         tree_bytes = f.read(tree_bytes_len)
         if len(tree_bytes) < tree_bytes_len:
             raise ValueError("Malformed file: missing tree bytes")

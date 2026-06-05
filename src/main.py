@@ -6,6 +6,7 @@ Provides commands to compress and decompress files, along with statistics tracki
 import argparse
 import os
 import sys
+import tempfile
 from collections import Counter
 
 from huffman import build_tree
@@ -26,6 +27,14 @@ def run_compress(input_path: str, output_path: str, show_stats: bool) -> None:
     Read input text, build Huffman tree, encode data, serialize tree,
     and write the compressed file.
     """
+    # Fix 3: Add input file existence + readability check
+    if not os.path.exists(input_path):
+        print(f"Error: input file '{input_path}' not found.", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isfile(input_path):
+        print(f"Error: '{input_path}' is not a file.", file=sys.stderr)
+        sys.exit(1)
+
     # 1. Read input text (handling potential empty file)
     try:
         with open(input_path, "r", encoding="utf-8", newline="") as f:
@@ -76,11 +85,19 @@ def run_compress(input_path: str, output_path: str, show_stats: bool) -> None:
         print("==============================")
 
 
-def run_decompress(input_path: str, output_path: str) -> None:
+def run_decompress(input_path: str, output_path: str, show_stats: bool = False, verify_path: str | None = None) -> None:
     """
     Read compressed file, deserialize tree, decode bitstring,
     and write the original text.
     """
+    # Fix 3: Add input file existence + readability check
+    if not os.path.exists(input_path):
+        print(f"Error: input file '{input_path}' not found.", file=sys.stderr)
+        sys.exit(1)
+    if not os.path.isfile(input_path):
+        print(f"Error: '{input_path}' is not a file.", file=sys.stderr)
+        sys.exit(1)
+
     # 1. Read compressed file format
     tree_bits, data_bits = read_compressed(input_path)
 
@@ -94,6 +111,119 @@ def run_decompress(input_path: str, output_path: str) -> None:
     with open(output_path, "w", encoding="utf-8", newline="") as f:
         f.write(decoded_text)
 
+    # Fix 4: Add byte-for-byte verification after decompress
+    with open(output_path, "r", encoding="utf-8", newline="") as f:
+        recovered = f.read()
+    if data_bits and not recovered:
+        print("Warning: decompressed output is unexpectedly empty.", file=sys.stderr)
+    else:
+        print(f"Decompression successful. Output written to: {output_path}")
+
+    # If verify_path is provided:
+    if verify_path is not None:
+        with open(verify_path, "r", encoding="utf-8", newline="") as f:
+            original = f.read()
+        with open(output_path, "r", encoding="utf-8", newline="") as f:
+            recovered = f.read()
+        if original == recovered:
+            print("Verification PASSED: output matches original exactly.")
+        else:
+            print("Verification FAILED: output does not match original.", file=sys.stderr)
+            sys.exit(1)
+
+    # Fix 5: Add a --stats block for decompress too
+    if show_stats:
+        comp_size = get_file_size(input_path)
+        decomp_size = get_file_size(output_path)
+        factor = decomp_size / comp_size if comp_size > 0 else float("nan")
+        print(f"Compressed size: {comp_size} bytes")
+        print(f"Decompressed size: {decomp_size} bytes")
+        print(f"Expansion factor: {factor:.2f}")
+
+
+def run_tests() -> None:
+    """
+    Run standalone test suite for compression and decompression.
+    Checks normal text, single-character, and empty file cases.
+    """
+    passed_count = 0
+    
+    # Test case 1: "hello huffman world"
+    content1 = "hello huffman world"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", newline="", delete=False) as f:
+        orig1 = f.name
+        f.write(content1)
+    comp1 = orig1 + ".huf"
+    rec1 = orig1 + "_recovered.txt"
+    try:
+        run_compress(orig1, comp1, show_stats=False)
+        run_decompress(comp1, rec1, show_stats=False, verify_path=None)
+        with open(rec1, "r", encoding="utf-8", newline="") as f:
+            recovered = f.read()
+        if recovered == content1:
+            print("Compare recovered == original -> PASS")
+            passed_count += 1
+        else:
+            print("Compare recovered == original -> FAIL")
+    except Exception:
+        print("Compare recovered == original -> FAIL")
+    finally:
+        for p in (orig1, comp1, rec1):
+            if os.path.exists(p):
+                os.remove(p)
+                
+    # Test case 2: "aaaaaaa"
+    content2 = "aaaaaaa"
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", newline="", delete=False) as f:
+        orig2 = f.name
+        f.write(content2)
+    comp2 = orig2 + ".huf"
+    rec2 = orig2 + "_recovered.txt"
+    try:
+        run_compress(orig2, comp2, show_stats=False)
+        run_decompress(comp2, rec2, show_stats=False, verify_path=None)
+        with open(rec2, "r", encoding="utf-8", newline="") as f:
+            recovered = f.read()
+        if recovered == content2:
+            print("Test with single-char content \"aaaaaaa\" -> PASS")
+            passed_count += 1
+        else:
+            print("Test with single-char content \"aaaaaaa\" -> FAIL")
+    except Exception:
+        print("Test with single-char content \"aaaaaaa\" -> FAIL")
+    finally:
+        for p in (orig2, comp2, rec2):
+            if os.path.exists(p):
+                os.remove(p)
+                
+    # Test case 3: empty file
+    content3 = ""
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", encoding="utf-8", newline="", delete=False) as f:
+        orig3 = f.name
+        f.write(content3)
+    comp3 = orig3 + ".huf"
+    rec3 = orig3 + "_recovered.txt"
+    try:
+        run_compress(orig3, comp3, show_stats=False)
+        run_decompress(comp3, rec3, show_stats=False, verify_path=None)
+        with open(rec3, "r", encoding="utf-8", newline="") as f:
+            recovered = f.read()
+        if recovered == content3:
+            print("Test with empty file -> PASS")
+            passed_count += 1
+        else:
+            print("Test with empty file -> FAIL")
+    except Exception:
+        print("Test with empty file -> FAIL")
+    finally:
+        for p in (orig3, comp3, rec3):
+            if os.path.exists(p):
+                os.remove(p)
+                
+    print(f"Summary: {passed_count}/3 tests passed")
+    if passed_count < 3:
+        sys.exit(1)
+
 
 def main() -> None:
     """Parse command line arguments and execute the compression/decompression flow."""
@@ -101,33 +231,48 @@ def main() -> None:
         description="Modular Huffman Encoding file compression and decompression tool."
     )
     
+    # Fix 6: Add "test" mode choice
     parser.add_argument(
         "mode",
-        choices=["compress", "decompress"],
-        help="Execution mode: 'compress' or 'decompress'."
+        choices=["compress", "decompress", "test"],
+        help="Execution mode: 'compress', 'decompress', or 'test'."
     )
     parser.add_argument(
         "input",
-        help="Path to the input file."
+        nargs="?",
+        help="Path to the input file (required for compress/decompress)."
     )
     parser.add_argument(
         "output",
-        help="Path to the output file."
+        nargs="?",
+        help="Path to the output file (required for compress/decompress)."
     )
     parser.add_argument(
         "--stats",
         action="store_true",
-        help="Print compression stats (only applicable for 'compress' mode)."
+        help="Print compression/decompression statistics."
+    )
+    # Fix 4: Add --verify parameter
+    parser.add_argument(
+        "--verify",
+        metavar="ORIGINAL",
+        help="After decompression, verify output matches this original file byte-for-byte."
     )
     
     args = parser.parse_args()
     
+    if args.mode in ("compress", "decompress"):
+        if not args.input or not args.output:
+            parser.error("the following arguments are required: input, output")
+            
     if args.mode == "compress":
+        if args.verify:
+            print("Warning: --verify flag is only applicable in 'decompress' mode.", file=sys.stderr)
         run_compress(args.input, args.output, args.stats)
     elif args.mode == "decompress":
-        if args.stats:
-            print("Warning: --stats flag is only applicable in 'compress' mode.", file=sys.stderr)
-        run_decompress(args.input, args.output)
+        run_decompress(args.input, args.output, args.stats, args.verify)
+    elif args.mode == "test":
+        run_tests()
 
 
 if __name__ == "__main__":
