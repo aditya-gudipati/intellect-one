@@ -1,0 +1,293 @@
+"""
+Unit and integration tests for the Huffman Encoding file compression tool.
+"""
+
+import os
+import sys
+import unittest
+import tempfile
+from collections import Counter
+
+# Add src to the path so we can import modules correctly
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../src")))
+
+from heap import MinHeap
+from huffman import HuffmanNode, build_tree
+from codec import generate_codes, encode, decode
+from serializer import serialize_tree, deserialize_tree
+from fileio import bits_to_bytes, bytes_to_bits, write_compressed, read_compressed
+
+
+class TestMinHeap(unittest.TestCase):
+    """Test cases for the custom MinHeap implementation."""
+
+    def test_insert_and_extract_min(self):
+        heap = MinHeap()
+        values = [5, 3, 8, 1, 2, 9, 4, 7, 6]
+        for v in values:
+            heap.insert(v)
+            
+        self.assertEqual(len(heap), len(values))
+        
+        extracted = []
+        while len(heap) > 0:
+            extracted.append(heap.extract_min())
+            
+        self.assertEqual(extracted, sorted(values))
+
+    def test_extract_min_empty_raises(self):
+        heap = MinHeap()
+        with self.assertRaises(IndexError):
+            heap.extract_min()
+
+    def test_heapify_complex_tie_break(self):
+        # Insert HuffmanNode to check tie-breaking via __lt__
+        heap = MinHeap()
+        node1 = HuffmanNode(freq=5, char='b')
+        node2 = HuffmanNode(freq=5, char='a')
+        node3 = HuffmanNode(freq=10, char='c')
+        
+        heap.insert(node3)
+        heap.insert(node1)
+        heap.insert(node2)
+        
+        first = heap.extract_min()
+        second = heap.extract_min()
+        third = heap.extract_min()
+        
+        self.assertEqual(first.char, 'a')
+        self.assertEqual(second.char, 'b')
+        self.assertEqual(third.char, 'c')
+
+
+class TestHuffmanTree(unittest.TestCase):
+    """Test cases for tree construction and HuffmanNode class."""
+
+    def test_build_tree_normal(self):
+        freq = {'a': 5, 'b': 9, 'c': 12, 'd': 13, 'e': 16, 'f': 45}
+        root = build_tree(freq)
+        self.assertIsNotNone(root)
+        self.assertEqual(root.freq, 100)
+
+    def test_build_tree_empty(self):
+        root = build_tree({})
+        self.assertIsNone(root)
+
+    def test_build_tree_single_char(self):
+        root = build_tree({'a': 10})
+        self.assertIsNotNone(root)
+        self.assertEqual(root.char, 'a')
+        self.assertEqual(root.freq, 10)
+        self.assertIsNone(root.left)
+        self.assertIsNone(root.right)
+
+
+class TestCodec(unittest.TestCase):
+    """Test cases for encoding and decoding Huffman bitstrings."""
+
+    def test_generate_codes_normal(self):
+        freq = {'a': 5, 'b': 9, 'c': 12}
+        root = build_tree(freq)
+        codes = generate_codes(root)
+        
+        # Check that all chars are in codes
+        self.assertIn('a', codes)
+        self.assertIn('b', codes)
+        self.assertIn('c', codes)
+        
+        # Verify prefix-free property
+        for char1, code1 in codes.items():
+            for char2, code2 in codes.items():
+                if char1 != char2:
+                    self.assertFalse(code1.startswith(code2), f"{code1} and {code2} share prefix")
+
+    def test_generate_codes_single_char(self):
+        root = build_tree({'a': 10})
+        codes = generate_codes(root)
+        self.assertEqual(codes, {'a': '0'})
+
+    def test_encode_decode_cycle(self):
+        text = "abracadabra"
+        freq = Counter(text)
+        root = build_tree(freq)
+        codes = generate_codes(root)
+        
+        bitstring = encode(text, codes)
+        decoded = decode(bitstring, root)
+        
+        self.assertEqual(decoded, text)
+
+    def test_encode_decode_single_char(self):
+        text = "aaaaaaa"
+        freq = Counter(text)
+        root = build_tree(freq)
+        codes = generate_codes(root)
+        
+        self.assertEqual(codes, {'a': '0'})
+        bitstring = encode(text, codes)
+        self.assertEqual(bitstring, "0000000")
+        
+        decoded = decode(bitstring, root)
+        self.assertEqual(decoded, text)
+
+    def test_decode_invalid_bit_raises(self):
+        root = build_tree({'a': 5, 'b': 5})
+        with self.assertRaises(ValueError):
+            decode("01021", root)
+
+    def test_decode_incomplete_bitstring_raises(self):
+        # We need a tree with depth > 1 to test split bits
+        root = build_tree({'a': 5, 'b': 2, 'c': 2})
+        # If we feed it a bitstring that doesn't terminate at a leaf
+        with self.assertRaises(ValueError):
+            decode("0", root)
+
+
+class TestSerializer(unittest.TestCase):
+    """Test cases for tree serialization and deserialization."""
+
+    def test_serialize_deserialize_empty(self):
+        bitstring = serialize_tree(None)
+        self.assertEqual(bitstring, "")
+        root, consumed = deserialize_tree(bitstring)
+        self.assertIsNone(root)
+        self.assertEqual(consumed, 0)
+
+    def test_serialize_deserialize_single(self):
+        node = HuffmanNode(freq=0, char='a')
+        bitstring = serialize_tree(node)
+        
+        # 1 + 8-bit ASCII representation of 'a' (97 = 01100001)
+        expected = "101100001"
+        self.assertEqual(bitstring, expected)
+        
+        root, consumed = deserialize_tree(bitstring)
+        self.assertIsNotNone(root)
+        self.assertEqual(root.char, 'a')
+        self.assertIsNone(root.left)
+        self.assertIsNone(root.right)
+        self.assertEqual(consumed, 9)
+
+    def test_serialize_deserialize_complex(self):
+        # Construct a tree manually
+        left_leaf = HuffmanNode(freq=0, char='x')
+        right_leaf = HuffmanNode(freq=0, char='y')
+        root = HuffmanNode(freq=0, char=None, left=left_leaf, right=right_leaf)
+        
+        bitstring = serialize_tree(root)
+        # Expected: internal (0), left (1 + ASCII(x)), right (1 + ASCII(y))
+        # 'x' = 120 (01111000)
+        # 'y' = 121 (01111001)
+        # Expected: "0" + "101111000" + "101111001"
+        expected = "0101111000101111001"
+        self.assertEqual(bitstring, expected)
+        
+        reconstructed_root, consumed = deserialize_tree(bitstring)
+        self.assertIsNotNone(reconstructed_root)
+        self.assertIsNone(reconstructed_root.char)
+        self.assertEqual(reconstructed_root.left.char, 'x')
+        self.assertEqual(reconstructed_root.right.char, 'y')
+        self.assertEqual(consumed, len(expected))
+
+
+class TestFileIO(unittest.TestCase):
+    """Test cases for bit-to-byte packing and binary file writing/reading."""
+
+    def test_bits_to_bytes_and_back(self):
+        # 11 bits: requires padding to 16 bits (2 bytes), padding count = 5
+        bitstring = "10110000101"
+        packed_bytes, padding = bits_to_bytes(bitstring)
+        
+        self.assertEqual(padding, 5)
+        self.assertEqual(len(packed_bytes), 2)
+        
+        unpacked_bits = bytes_to_bits(packed_bytes, padding)
+        self.assertEqual(unpacked_bits, bitstring)
+
+    def test_empty_bits_to_bytes(self):
+        packed, padding = bits_to_bytes("")
+        self.assertEqual(packed, b"")
+        self.assertEqual(padding, 0)
+        self.assertEqual(bytes_to_bits(packed, padding), "")
+
+    def test_read_write_cycle_normal(self):
+        tree_bits = "0101100001101100010"
+        data_bits = "0110011100"
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "test.huf")
+            write_compressed(filepath, tree_bits, data_bits)
+            
+            read_tree, read_data = read_compressed(filepath)
+            
+            self.assertEqual(read_tree, tree_bits)
+            self.assertEqual(read_data, data_bits)
+
+    def test_read_write_cycle_empty(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "empty.huf")
+            write_compressed(filepath, "", "")
+            
+            # Should have created a 0-byte file
+            self.assertEqual(os.path.getsize(filepath), 0)
+            
+            read_tree, read_data = read_compressed(filepath)
+            self.assertEqual(read_tree, "")
+            self.assertEqual(read_data, "")
+
+
+class TestIntegrationEndToEnd(unittest.TestCase):
+    """End-to-end compression and decompression tests."""
+
+    def assert_compress_decompress(self, original_text: str):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_file = os.path.join(tmpdir, "input.txt")
+            compressed_file = os.path.join(tmpdir, "output.huf")
+            recovered_file = os.path.join(tmpdir, "recovered.txt")
+            
+            with open(input_file, "w", encoding="utf-8", newline="") as f:
+                f.write(original_text)
+                
+            # Perform compression
+            freq = Counter(original_text)
+            root = build_tree(freq)
+            codes = generate_codes(root)
+            data_bits = encode(original_text, codes)
+            tree_bits = serialize_tree(root)
+            
+            write_compressed(compressed_file, tree_bits, data_bits)
+            
+            # Perform decompression
+            read_tree_bits, read_data_bits = read_compressed(compressed_file)
+            reconstructed_root, _ = deserialize_tree(read_tree_bits)
+            decoded_text = decode(read_data_bits, reconstructed_root)
+            
+            with open(recovered_file, "w", encoding="utf-8", newline="") as f:
+                f.write(decoded_text)
+                
+            with open(recovered_file, "r", encoding="utf-8", newline="") as f:
+                recovered_text = f.read()
+                
+            self.assertEqual(recovered_text, original_text)
+
+    def test_end_to_end_typical(self):
+        text = "The quick brown fox jumps over the lazy dog! 1234567890. ABRA CADABRA."
+        self.assert_compress_decompress(text)
+
+    def test_end_to_end_empty(self):
+        self.assert_compress_decompress("")
+
+    def test_end_to_end_single_char(self):
+        self.assert_compress_decompress("a")
+
+    def test_end_to_end_single_char_repeating(self):
+        self.assert_compress_decompress("bbbbbbbbbbbbbbbb")
+
+    def test_end_to_end_all_256_ascii(self):
+        # We construct a text containing all 256 ASCII characters
+        text = "".join(chr(i) for i in range(256))
+        self.assert_compress_decompress(text)
+
+
+if __name__ == "__main__":
+    unittest.main()
