@@ -1,20 +1,28 @@
 """
-This module handles serialization and deserialization of the Huffman tree.
-It uses preorder bit encoding (0 for internal nodes, 1 + 8 bits for leaf nodes)
-without any recursive functions.
+SPECIFICATION:
+  Rule 1: Decompression Gate - Tree structure is serialized using iterative preorder
+          DFS traversal, writing '0' for internal nodes and '1' followed by the 8-bit
+          binary representation of the character's ASCII code for leaf nodes.
+  Rule 2: No-Recursion constraint - Serialization and deserialization must be performed
+          using explicit stacks to guarantee protection against Python's maximum recursion limit.
+  Edge cases handled: Empty tree serializes to/deserializes from an empty string; invalid
+          bitstrings (unexpected end of string) during deserialization raise ValueError.
 """
 
 from typing import Tuple, Optional
 from huffman import HuffmanNode
 
+# Complexity: Time O(k), Space O(k) where k is the number of unique characters
+# Invariant: Output bitstring corresponds exactly to preorder sequence of nodes (Root, Left, Right).
 def serialize_tree(root: Optional[HuffmanNode]) -> str:
     """
     Serialize the Huffman tree into a bitstring (string of '0's and '1's)
     using an iterative preorder DFS traversal.
     
-    Format:
-        - Internal Node: '0'
-        - Leaf Node: '1' followed by 8-bit binary representation of character ASCII
+    Algorithm:
+        - Strategy: Preorder depth-first traversal (DFS) using an explicit stack.
+        - Rationale: Standard binary tree structures are naturally flattened by preorder sequence. Stack-based iteration avoids recursion depth limit.
+        - Alternatives: Level-order (BFS) serialization was rejected because it requires structural layout metadata / null markers, making it less compact. Adjacency lists or JSON representations were rejected due to verbose overhead.
         
     Args:
         root: The root of the Huffman tree.
@@ -54,6 +62,8 @@ def serialize_tree(root: Optional[HuffmanNode]) -> str:
     return "".join(bits)
 
 
+# Complexity: Time O(k), Space O(k) where k is the number of unique characters
+# Invariant: Reconstruction stack state mirrors the active structural hierarchy of the tree.
 def deserialize_tree(bitstring: str) -> Tuple[Optional[HuffmanNode], int]:
     """
     Deserialize a preorder bitstring back into a Huffman tree structure.

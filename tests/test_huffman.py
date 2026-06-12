@@ -59,6 +59,24 @@ class TestMinHeap(unittest.TestCase):
         self.assertEqual(second.char, 'b')
         self.assertEqual(third.char, 'c')
 
+    def test_heap_extract_ordering(self):
+        """1. test_heap_extract_ordering - insert nodes with freq [5,3,8,1], assert extraction order is 1,3,5,8"""
+        heap = MinHeap()
+        nodes = [
+            HuffmanNode(freq=5, char='a'),
+            HuffmanNode(freq=3, char='b'),
+            HuffmanNode(freq=8, char='c'),
+            HuffmanNode(freq=1, char='d')
+        ]
+        for node in nodes:
+            heap.insert(node)
+            
+        extracted = []
+        while len(heap) > 0:
+            extracted.append(heap.extract_min().freq)
+            
+        self.assertEqual(extracted, [1, 3, 5, 8])
+
 
 class TestHuffmanTree(unittest.TestCase):
     """Test cases for tree construction and HuffmanNode class."""
@@ -141,6 +159,37 @@ class TestCodec(unittest.TestCase):
         # If we feed it a bitstring that doesn't terminate at a leaf
         with self.assertRaises(ValueError):
             decode("0", root)
+
+    def test_prefix_free_property(self):
+        """2. test_prefix_free_property - for any 5-char input, assert no code in generate_codes() is a prefix of another"""
+        text = "abcde"
+        freq = Counter(text)
+        root = build_tree(freq)
+        codes = generate_codes(root)
+        
+        for char1, code1 in codes.items():
+            for char2, code2 in codes.items():
+                if char1 != char2:
+                    self.assertFalse(
+                        code1.startswith(code2),
+                        f"Code '{code1}' for '{char1}' is prefixed by '{code2}' for '{char2}'"
+                    )
+
+    def test_all_equal_frequency_prefix_free(self):
+        """7. test_all_equal_frequency_prefix_free - 26 chars freq=10 each, assert prefix-free property"""
+        import string
+        freq = {char: 10 for char in string.ascii_lowercase}
+        root = build_tree(freq)
+        codes = generate_codes(root)
+        self.assertEqual(len(codes), 26)
+        
+        for char1, code1 in codes.items():
+            for char2, code2 in codes.items():
+                if char1 != char2:
+                    self.assertFalse(
+                        code1.startswith(code2),
+                        f"Code '{code1}' for '{char1}' is prefixed by '{code2}' for '{char2}'"
+                    )
 
 
 class TestSerializer(unittest.TestCase):
@@ -235,6 +284,36 @@ class TestFileIO(unittest.TestCase):
             self.assertEqual(read_tree, "")
             self.assertEqual(read_data, "")
 
+    def test_byte_packing_padding(self):
+        """4. test_byte_packing_padding - encode a string that produces a non-multiple-of-8 bitstring, assert padding_count > 0, assert decompression is correct"""
+        text = "abracadabra"
+        freq = Counter(text)
+        root = build_tree(freq)
+        codes = generate_codes(root)
+        bitstring = encode(text, codes)
+        
+        # Verify it's not a multiple of 8
+        self.assertNotEqual(len(bitstring) % 8, 0)
+        
+        packed, padding = bits_to_bytes(bitstring)
+        self.assertGreater(padding, 0)
+        
+        unpacked_bits = bytes_to_bits(packed, padding)
+        self.assertEqual(unpacked_bits, bitstring)
+        decoded = decode(unpacked_bits, root)
+        self.assertEqual(decoded, text)
+
+    def test_corrupt_header_raises(self):
+        """5. test_corrupt_header_raises - write a 4-byte file to disk, call read_compressed(), assert raises ValueError"""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            filepath = os.path.join(tmpdir, "corrupt.huf")
+            # Write a 4-byte malformed file (e.g. tree length indicates 5 bits, but file is truncated/corrupt)
+            with open(filepath, "wb") as f:
+                f.write(b"\x00\x05\x00\x00")
+            
+            with self.assertRaises(ValueError):
+                read_compressed(filepath)
+
 
 class TestIntegrationEndToEnd(unittest.TestCase):
     """End-to-end compression and decompression tests."""
@@ -287,6 +366,32 @@ class TestIntegrationEndToEnd(unittest.TestCase):
         # We construct a text containing all 256 ASCII characters
         text = "".join(chr(i) for i in range(256))
         self.assert_compress_decompress(text)
+
+    def test_equal_frequency(self):
+        """3. test_equal_frequency - build_tree({'a':10,'b':10,'c':10,'d':10,'e':10}), assert valid tree + correct round-trip"""
+        freq = {'a': 10, 'b': 10, 'c': 10, 'd': 10, 'e': 10}
+        root = build_tree(freq)
+        self.assertIsNotNone(root)
+        self.assertEqual(root.freq, 50)
+        
+        codes = generate_codes(root)
+        text = "abcde"
+        bitstring = encode(text, codes)
+        decoded = decode(bitstring, root)
+        self.assertEqual(decoded, text)
+
+    def test_large_file_roundtrip(self):
+        """6. test_large_file_roundtrip - generate a 50KB string of random printable ASCII, assert byte-identical round-trip"""
+        import random
+        import string
+        random.seed(42)
+        # Generate 50KB of random printable ASCII characters
+        text = "".join(random.choices(string.printable, k=50 * 1024))
+        self.assert_compress_decompress(text)
+
+    def test_single_byte_file(self):
+        """8. test_single_byte_file - compress/decompress a 1-byte file ('z'), assert identity"""
+        self.assert_compress_decompress("z")
 
 
 if __name__ == "__main__":

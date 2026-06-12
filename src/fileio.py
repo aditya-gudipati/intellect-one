@@ -1,15 +1,30 @@
 """
-This module handles binary I/O operations and bit packing/unpacking using bytearrays.
+SPECIFICATION:
+  Rule 1: Byte Packing - Converts bitstring to packed bytes by padding with trailing
+          zeros to form a multiple of 8, keeping track of the padding count.
+  Rule 2: Binary File Structure - Writes uint16 big-endian tree length (2 bytes),
+          tree padding count (1 byte), packed tree bytes, data padding count (1 byte),
+          and packed data bytes.
+  Edge cases handled: Empty file results in a 0-byte file (Empty File case); tree bitstring
+          lengths exceeding the uint16 maximum (65535) raise ValueError; truncated or
+          malformed headers during read operations raise ValueError.
 """
 
 import os
 from typing import Tuple
 
+# Complexity: Time O(b), Space O(b) where b is the length of the bitstring
+# Invariant: padding_count is always in the range [0, 7].
 def bits_to_bytes(bitstring: str) -> Tuple[bytes, int]:
     """
     Pad a bitstring to a multiple of 8 with trailing zeros and pack into bytes.
     Uses bytearray for building the byte sequence.
     
+    Algorithm:
+        - Strategy: Bytearray-based chunk accumulation.
+        - Rationale: Chunking in steps of 8 and appending to a bytearray runs in linear time with minimal memory allocation overhead.
+        - Alternatives: Repeated string copying or integer list conversions were rejected because they suffer from higher allocation overhead in Python.
+
     Args:
         bitstring: A string of '0's and '1's.
         
@@ -30,6 +45,8 @@ def bits_to_bytes(bitstring: str) -> Tuple[bytes, int]:
     return bytes(barr), padding_count
 
 
+# Complexity: Time O(B), Space O(B) where B is the number of bytes in bytes_obj
+# Invariant: Reconstructed bitstring length equals exactly (8 * B) - padding_count.
 def bytes_to_bits(bytes_obj: bytes, padding_count: int) -> str:
     """
     Unpack a bytes object back into a bitstring, stripping the trailing padding bits.
@@ -56,6 +73,8 @@ def bytes_to_bits(bytes_obj: bytes, padding_count: int) -> str:
     return full_bitstring
 
 
+# Complexity: Time O(T + D), Space O(T + D) where T and D are the lengths of tree and data bitstrings
+# Invariant: Output file matches the custom binary prefix layout or is empty.
 def write_compressed(filepath: str, tree_bits: str, data_bits: str) -> None:
     """
     Write tree_bits and data_bits into a compressed file using the specified format.
@@ -66,6 +85,11 @@ def write_compressed(filepath: str, tree_bits: str, data_bits: str) -> None:
         4. 1 byte: padding count for data bits
         5. packed data bytes
         
+    Algorithm:
+        - Strategy: Custom binary header prefix formatting.
+        - Rationale: Storing tree bit lengths as static uint16 and padding counts as single bytes consumes only 4 bytes of total overhead, maximizing compression.
+        - Alternatives: Storing headers in XML or JSON format was rejected because the string representation overhead exceeds the savings of small files.
+
     If both tree_bits and data_bits are empty, writes an empty file (0 bytes).
     
     Args:
@@ -99,6 +123,8 @@ def write_compressed(filepath: str, tree_bits: str, data_bits: str) -> None:
         f.write(data_bytes)
 
 
+# Complexity: Time O(F), Space O(F) where F is the file size in bytes
+# Invariant: Reconstructed tree bitstring length matches the tree_len read from the file header.
 def read_compressed(filepath: str) -> Tuple[str, str]:
     """
     Read a compressed file and reconstruct the tree_bits and data_bits.

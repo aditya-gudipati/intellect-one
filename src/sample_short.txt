@@ -1,0 +1,1 @@
+Huffman coding is a particular type of optimal prefix code that is commonly used for lossless data compression. The process of finding or estimating such a code proceeds by means of Huffman's algorithm, which was developed by David A. Huffman.

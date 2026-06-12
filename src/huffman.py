@@ -1,7 +1,14 @@
 """
-This module defines the HuffmanNode class and the build_tree function
-to construct a Huffman tree from a frequency table.
+SPECIFICATION:
+  Rule 1: Tree Construction - Constructs the Huffman tree using greedy merging of
+          minimum frequency nodes via a custom MinHeap.
+  Rule 2: Parent Node Frequencies - The frequency of any internal parent node is
+          always the exact sum of the frequencies of its left and right children.
+  Edge cases handled: Empty frequency dictionary returns None; single-unique-character
+          dictionary returns a single leaf node.
 """
+
+# Overall complexity: O(n + k log k) where n=file chars, k=unique chars
 
 from typing import Dict, Optional, Any
 from heap import MinHeap
@@ -10,6 +17,13 @@ class HuffmanNode:
     """
     A node in the Huffman tree.
     Supports comparison using '<' for MinHeap operations.
+
+    Class Invariants:
+      1. Frequency Sign: Frequency (`self.freq`) is always a non-negative integer.
+      2. Leaf Character: If it is a leaf (both left and right are None), `self.char`
+         must not be None (except in empty-tree context).
+      3. Internal Node: If it is an internal node, both left and right must be present
+         and `self.char` must be None.
     """
     def __init__(
         self,
@@ -55,10 +69,17 @@ class HuffmanNode:
         return f"HuffmanNode(freq={self.freq}, char={self.char!r})"
 
 
+# Complexity: Time O(k log k), Space O(k) where k is the number of unique characters
+# Invariant: Frequencies of merged nodes equal the sum of children's frequencies. Heap size decreases by 1 each merge.
 def build_tree(freq_dict: Dict[str, int]) -> Optional[HuffmanNode]:
     """
     Build a Huffman tree from a frequency dictionary and return the root node.
     
+    Algorithm:
+        - Strategy: Greedy merging using a binary MinHeap as a Priority Queue.
+        - Rationale: Extracts two minimum frequency nodes in O(log k) and re-inserts their parent in O(log k). Runs in O(k log k) overall.
+        - Alternatives: Repeatedly sorting a list/array of nodes takes O(k^2) time due to element shifting, which was rejected as sub-optimal.
+
     Args:
         freq_dict: A dictionary mapping characters to their frequencies.
         
@@ -85,4 +106,9 @@ def build_tree(freq_dict: Dict[str, int]) -> Optional[HuffmanNode]:
         
         heap.insert(parent_node)
 
-    return heap.extract_min()
+    root = heap.extract_min()
+    
+    # Assert Step 2 Domain Invariant: Root frequency must equal the sum of all character frequencies
+    assert root.freq == sum(freq_dict.values()), "Root freq must equal total chars"
+    
+    return root
