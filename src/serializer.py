@@ -43,12 +43,19 @@ def serialize_tree(root: Optional[HuffmanNode]) -> str:
             # Leaf node
             if node.char is None:
                 raise ValueError("Leaf node must contain a character")
-            val = ord(node.char)
-            if val < 0 or val > 255:
-                raise ValueError(f"Character {node.char!r} is not standard 8-bit ASCII")
             
-            # Format ordinal as 8-bit binary string
-            bits.append("1" + f"{val:08b}")
+            utf8_bytes = node.char.encode("utf-8")
+            num_bytes = len(utf8_bytes)
+            if num_bytes < 1 or num_bytes > 4:
+                raise ValueError(f"Character {node.char!r} UTF-8 length ({num_bytes}) is not between 1 and 4 bytes")
+            
+            # 2-bit binary for length (0 to 3 mapping to 1 to 4 bytes)
+            len_bits = f"{(num_bytes - 1):02b}"
+            
+            # 8-bit binary representation for each byte
+            byte_bits = "".join(f"{b:08b}" for b in utf8_bytes)
+            
+            bits.append("1" + len_bits + byte_bits)
         else:
             # Internal node
             bits.append("0")
@@ -85,11 +92,19 @@ def deserialize_tree(bitstring: str) -> Tuple[Optional[HuffmanNode], int]:
     
     # Handle single node tree or initial node
     if bitstring[idx] == "1":
-        if len(bitstring) < idx + 9:
+        if len(bitstring) < idx + 3:
             raise ValueError("Unexpected end of bitstring during tree deserialization")
-        char_bits = bitstring[idx + 1 : idx + 9]
-        char = chr(int(char_bits, 2))
-        return HuffmanNode(freq=0, char=char), 9
+        len_bits = bitstring[idx + 1 : idx + 3]
+        num_bytes = int(len_bits, 2) + 1
+        if len(bitstring) < idx + 3 + num_bytes * 8:
+            raise ValueError("Unexpected end of bitstring during tree deserialization")
+        
+        char_bits = bitstring[idx + 3 : idx + 3 + num_bytes * 8]
+        byte_list = []
+        for i in range(0, len(char_bits), 8):
+            byte_list.append(int(char_bits[i : i + 8], 2))
+        char = bytes(byte_list).decode("utf-8")
+        return HuffmanNode(freq=0, char=char), 3 + num_bytes * 8
 
     # Root is an internal node
     root = HuffmanNode(freq=0, char=None)
@@ -121,12 +136,21 @@ def deserialize_tree(bitstring: str) -> Tuple[Optional[HuffmanNode], int]:
             stack.append((node, "left"))
         else:
             # Leaf node
-            if len(bitstring) < idx + 9:
+            if len(bitstring) < idx + 3:
                 raise ValueError("Unexpected end of bitstring during tree deserialization")
-            char_bits = bitstring[idx + 1 : idx + 9]
-            char = chr(int(char_bits, 2))
+            len_bits = bitstring[idx + 1 : idx + 3]
+            num_bytes = int(len_bits, 2) + 1
+            
+            if len(bitstring) < idx + 3 + num_bytes * 8:
+                raise ValueError("Unexpected end of bitstring during tree deserialization")
+                
+            char_bits = bitstring[idx + 3 : idx + 3 + num_bytes * 8]
+            byte_list = []
+            for i in range(0, len(char_bits), 8):
+                byte_list.append(int(char_bits[i : i + 8], 2))
+            char = bytes(byte_list).decode("utf-8")
             node = HuffmanNode(freq=0, char=char)
-            idx += 9
+            idx += 3 + num_bytes * 8
             
             if slot == "left":
                 parent.left = node

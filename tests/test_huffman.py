@@ -6,6 +6,7 @@ import os
 import sys
 import unittest
 import tempfile
+import zipfile
 from collections import Counter
 
 # Add src to the path so we can import modules correctly
@@ -206,8 +207,8 @@ class TestSerializer(unittest.TestCase):
         node = HuffmanNode(freq=0, char='a')
         bitstring = serialize_tree(node)
         
-        # 1 + 8-bit ASCII representation of 'a' (97 = 01100001)
-        expected = "101100001"
+        # 1 (leaf) + 2-bit length (00) + 8-bit UTF-8 representation of 'a' (97 = 01100001)
+        expected = "10001100001"
         self.assertEqual(bitstring, expected)
         
         root, consumed = deserialize_tree(bitstring)
@@ -215,7 +216,7 @@ class TestSerializer(unittest.TestCase):
         self.assertEqual(root.char, 'a')
         self.assertIsNone(root.left)
         self.assertIsNone(root.right)
-        self.assertEqual(consumed, 9)
+        self.assertEqual(consumed, 11)
 
     def test_serialize_deserialize_complex(self):
         # Construct a tree manually
@@ -224,11 +225,12 @@ class TestSerializer(unittest.TestCase):
         root = HuffmanNode(freq=0, char=None, left=left_leaf, right=right_leaf)
         
         bitstring = serialize_tree(root)
-        # Expected: internal (0), left (1 + ASCII(x)), right (1 + ASCII(y))
+        # Expected under UTF-8 serialization: 
+        # internal (0) + left (1 + 00 + UTF8(x)) + right (1 + 00 + UTF8(y))
         # 'x' = 120 (01111000)
         # 'y' = 121 (01111001)
-        # Expected: "0" + "101111000" + "101111001"
-        expected = "0101111000101111001"
+        # Expected: "0" + "10001111000" + "10001111001"
+        expected = "01000111100010001111001"
         self.assertEqual(bitstring, expected)
         
         reconstructed_root, consumed = deserialize_tree(bitstring)
@@ -392,6 +394,117 @@ class TestIntegrationEndToEnd(unittest.TestCase):
     def test_single_byte_file(self):
         """8. test_single_byte_file - compress/decompress a 1-byte file ('z'), assert identity"""
         self.assert_compress_decompress("z")
+
+
+class TestDocxSupport(unittest.TestCase):
+    """Test cases for docx reader and Unicode Huffman serialization."""
+
+    def test_extract_text_from_docx_valid(self):
+        # Create a mock docx in memory/temp file
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp_path = tmp.name
+            
+        try:
+            with zipfile.ZipFile(tmp_path, "w") as docx:
+                docx.writestr("word/document.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:t>Hello world from docx!</w:t>
+    </w:p>
+    <w:p>
+      <w:t>This is the second paragraph.</w:t>
+    </w:p>
+  </w:body>
+</w:document>""")
+            
+            from docx_reader import extract_text_from_docx
+            text = extract_text_from_docx(tmp_path)
+            self.assertEqual(text, "Hello world from docx!\nThis is the second paragraph.")
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    def test_extract_text_from_docx_invalid(self):
+        # Create a non-docx zip file
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            with zipfile.ZipFile(tmp_path, "w") as docx:
+                docx.writestr("not_document.xml", "some text")
+            from docx_reader import extract_text_from_docx
+            with self.assertRaises(ValueError):
+                extract_text_from_docx(tmp_path)
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+
+    def test_unicode_serialize_deserialize(self):
+        # Test 3-byte unicode character: ₹
+        node = HuffmanNode(freq=0, char='₹')
+        bitstring = serialize_tree(node)
+        
+        # Expected: 1 (leaf) + 10 (3 bytes) + UTF-8 of ₹ (e2 82 b9)
+        # e2: 11100010
+        # 82: 10000010
+        # b9: 10111001
+        expected = "110111000101000001010111001"
+        self.assertEqual(bitstring, expected)
+        
+        root, consumed = deserialize_tree(bitstring)
+        self.assertIsNotNone(root)
+        self.assertEqual(root.char, '₹')
+        self.assertEqual(consumed, 27)
+
+    def test_emoji_serialize_deserialize(self):
+        # Test 4-byte unicode character: 😊
+        node = HuffmanNode(freq=0, char='😊')
+        bitstring = serialize_tree(node)
+        
+        # Expected: 1 (leaf) + 11 (4 bytes) + UTF-8 of 😊 (f0 9f 98 8a)
+        # f0: 11110000
+        # 9f: 10011111
+        # 98: 10011000
+        # 8a: 10001010
+        expected = "11111110000100111111001100010001010"
+        self.assertEqual(bitstring, expected)
+        
+        root, consumed = deserialize_tree(bitstring)
+        self.assertIsNotNone(root)
+        self.assertEqual(root.char, '😊')
+        self.assertEqual(consumed, 35)
+
+    def test_docx_compression_integration(self):
+        # Create docx file with unicode characters
+        with tempfile.NamedTemporaryFile(suffix=".docx", delete=False) as tmp:
+            tmp_path = tmp.name
+        try:
+            with zipfile.ZipFile(tmp_path, "w") as docx:
+                docx.writestr("word/document.xml", """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p>
+      <w:t>Virat Kohli earned ₹634 crore 😊.</w:t>
+    </w:p>
+  </w:body>
+</w:document>""")
+            
+            comp_path = tmp_path + ".huf"
+            recovered_path = tmp_path + "_rec.txt"
+            
+            # Run CLI compress and decompress
+            from main import run_compress, run_decompress
+            run_compress(tmp_path, comp_path, show_stats=False)
+            run_decompress(comp_path, recovered_path, show_stats=False, verify_path=tmp_path)
+            
+            with open(recovered_path, "r", encoding="utf-8") as f:
+                recovered_text = f.read()
+                
+            self.assertEqual(recovered_text, "Virat Kohli earned ₹634 crore 😊.")
+        finally:
+            for p in (tmp_path, comp_path, recovered_path):
+                if os.path.exists(p):
+                    os.remove(p)
 
 
 if __name__ == "__main__":

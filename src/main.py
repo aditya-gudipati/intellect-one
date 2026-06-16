@@ -13,6 +13,7 @@ from huffman import build_tree
 from codec import generate_codes, encode, decode
 from serializer import deserialize_tree, serialize_tree
 from fileio import write_compressed, read_compressed
+from docx_reader import extract_text_from_docx
 
 def get_file_size(filepath: str) -> int:
     """Return file size in bytes, or 0 if file does not exist."""
@@ -35,15 +36,22 @@ def run_compress(input_path: str, output_path: str, show_stats: bool) -> None:
         print(f"Error: '{input_path}' is not a file.", file=sys.stderr)
         sys.exit(1)
 
-    # 1. Read input text (handling potential empty file)
-    try:
-        with open(input_path, "r", encoding="utf-8", newline="") as f:
-            text = f.read()
-    except UnicodeDecodeError:
-        # Fallback to system encoding or default to binary-like reading if requested,
-        # but for .txt standard UTF-8 is appropriate.
-        with open(input_path, "r", encoding="utf-8", errors="replace", newline="") as f:
-            text = f.read()
+    # 1. Read input text (handling potential empty file or Word Document)
+    if input_path.lower().endswith(".docx"):
+        try:
+            text = extract_text_from_docx(input_path)
+        except Exception as e:
+            print(f"Error: Failed to read Word Document '{input_path}': {e}", file=sys.stderr)
+            sys.exit(1)
+    else:
+        try:
+            with open(input_path, "r", encoding="utf-8", newline="") as f:
+                text = f.read()
+        except UnicodeDecodeError:
+            # Fallback to system encoding or default to binary-like reading if requested,
+            # but for .txt standard UTF-8 is appropriate.
+            with open(input_path, "r", encoding="utf-8", errors="replace", newline="") as f:
+                text = f.read()
 
     # 2. Generate frequency table using Counter
     frequencies = Counter(text)
@@ -121,8 +129,15 @@ def run_decompress(input_path: str, output_path: str, show_stats: bool = False, 
 
     # If verify_path is provided:
     if verify_path is not None:
-        with open(verify_path, "r", encoding="utf-8", newline="") as f:
-            original = f.read()
+        if verify_path.lower().endswith(".docx"):
+            try:
+                original = extract_text_from_docx(verify_path)
+            except Exception as e:
+                print(f"Error: Failed to read Word Document for verification: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            with open(verify_path, "r", encoding="utf-8", newline="") as f:
+                original = f.read()
         with open(output_path, "r", encoding="utf-8", newline="") as f:
             recovered = f.read()
         if original == recovered:
