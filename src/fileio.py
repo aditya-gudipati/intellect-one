@@ -107,12 +107,12 @@ def write_compressed(filepath: str, tree_bits: str, data_bits: str) -> None:
     data_bytes, data_padding = bits_to_bytes(data_bits)
     
     tree_len = len(tree_bits)
-    if tree_len > 65535:
-        raise ValueError(f"Tree bitstring length ({tree_len}) exceeds uint16 limit (65535)")
+    if tree_len > 4294967295:
+        raise ValueError(f"Tree bitstring length ({tree_len}) exceeds uint32 limit (4294967295)")
 
     with open(filepath, "wb") as f:
-        # Write uint16 tree length
-        f.write(tree_len.to_bytes(2, byteorder="big"))
+        # Write uint32 tree length (4 bytes)
+        f.write(tree_len.to_bytes(4, byteorder="big"))
         # Write tree padding
         f.write(bytes([tree_padding]))
         # Write tree bytes
@@ -147,9 +147,9 @@ def read_compressed(filepath: str) -> Tuple[str, str]:
         return "", ""
 
     with open(filepath, "rb") as f:
-        # Read tree length (2 bytes)
-        tree_len_bytes = f.read(2)
-        if len(tree_len_bytes) < 2:
+        # Read tree length (4 bytes)
+        tree_len_bytes = f.read(4)
+        if len(tree_len_bytes) < 4:
             raise ValueError("Malformed file: cannot read tree length")
         tree_len = int.from_bytes(tree_len_bytes, byteorder="big")
         

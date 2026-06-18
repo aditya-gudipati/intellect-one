@@ -306,12 +306,12 @@ class TestFileIO(unittest.TestCase):
         self.assertEqual(decoded, text)
 
     def test_corrupt_header_raises(self):
-        """5. test_corrupt_header_raises - write a 4-byte file to disk, call read_compressed(), assert raises ValueError"""
+        """5. test_corrupt_header_raises - write a 3-byte file to disk, call read_compressed(), assert raises ValueError"""
         with tempfile.TemporaryDirectory() as tmpdir:
             filepath = os.path.join(tmpdir, "corrupt.huf")
-            # Write a 4-byte malformed file (e.g. tree length indicates 5 bits, but file is truncated/corrupt)
+            # Write a 3-byte malformed file (insufficient for 4-byte tree length)
             with open(filepath, "wb") as f:
-                f.write(b"\x00\x05\x00\x00")
+                f.write(b"\x00\x05\x00")
             
             with self.assertRaises(ValueError):
                 read_compressed(filepath)
