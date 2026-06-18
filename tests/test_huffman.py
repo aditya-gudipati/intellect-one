@@ -507,5 +507,30 @@ class TestDocxSupport(unittest.TestCase):
                     os.remove(p)
 
 
+class TestBinarySupport(unittest.TestCase):
+    """Test cases for binary file (PDF, images) byte-for-byte compression support."""
+
+    def test_binary_roundtrip_bytes(self):
+        # Generate arbitrary binary data with bytes 0 to 255
+        raw_bytes = bytes(range(256)) * 4 + b"\x00\xff\x7f\x80"
+        
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_path = os.path.join(tmpdir, "input.bin")
+            comp_path = os.path.join(tmpdir, "output.huf")
+            recovered_path = os.path.join(tmpdir, "recovered.bin")
+            
+            with open(input_path, "wb") as f:
+                f.write(raw_bytes)
+                
+            from main import run_compress, run_decompress
+            run_compress(input_path, comp_path, show_stats=False)
+            run_decompress(comp_path, recovered_path, show_stats=False, verify_path=input_path)
+            
+            with open(recovered_path, "rb") as f:
+                recovered_data = f.read()
+                
+            self.assertEqual(recovered_data, raw_bytes)
+
+
 if __name__ == "__main__":
     unittest.main()

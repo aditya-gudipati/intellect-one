@@ -36,22 +36,27 @@ def run_compress(input_path: str, output_path: str, show_stats: bool) -> None:
         print(f"Error: '{input_path}' is not a file.", file=sys.stderr)
         sys.exit(1)
 
-    # 1. Read input text (handling potential empty file or Word Document)
-    if input_path.lower().endswith(".docx"):
+    # 1. Read input text (handling potential empty file, Word Document, PDF or raw binary)
+    ext = input_path.lower().split('.')[-1]
+    if ext == "docx":
         try:
             text = extract_text_from_docx(input_path)
         except Exception as e:
-            print(f"Error: Failed to read Word Document '{input_path}': {e}", file=sys.stderr)
-            sys.exit(1)
+            print(f"Warning: Failed to extract text from Word Document '{input_path}': {e}. Compressing as binary instead.", file=sys.stderr)
+            with open(input_path, "rb") as f:
+                text = f.read().decode("latin-1")
+    elif ext in ("pdf", "png", "jpg", "jpeg", "gif", "zip", "exe", "bin", "huf"):
+        # Explicit binary file formats: read as raw bytes and decode using latin-1
+        with open(input_path, "rb") as f:
+            text = f.read().decode("latin-1")
     else:
+        # Standard text file: try UTF-8, fallback to latin-1 (binary representation)
         try:
             with open(input_path, "r", encoding="utf-8", newline="") as f:
                 text = f.read()
         except UnicodeDecodeError:
-            # Fallback to system encoding or default to binary-like reading if requested,
-            # but for .txt standard UTF-8 is appropriate.
-            with open(input_path, "r", encoding="utf-8", errors="replace", newline="") as f:
-                text = f.read()
+            with open(input_path, "rb") as f:
+                text = f.read().decode("latin-1")
 
     # 2. Generate frequency table using Counter
     frequencies = Counter(text)
@@ -116,31 +121,73 @@ def run_decompress(input_path: str, output_path: str, show_stats: bool = False, 
     decoded_text = decode(data_bits, root)
 
     # 4. Write output text
-    with open(output_path, "w", encoding="utf-8", newline="") as f:
-        f.write(decoded_text)
+    # Attempt to write back using latin-1 if all chars fit (preserving raw binary),
+    # otherwise write as standard UTF-8 text.
+    try:
+        binary_data = decoded_text.encode("latin-1")
+        with open(output_path, "wb") as f:
+            f.write(binary_data)
+    except UnicodeEncodeError:
+        with open(output_path, "w", encoding="utf-8", newline="") as f:
+            f.write(decoded_text)
 
     # Fix 4: Add byte-for-byte verification after decompress
-    with open(output_path, "r", encoding="utf-8", newline="") as f:
-        recovered = f.read()
-    if data_bits and not recovered:
+    # For verification check, read in binary if we wrote in binary, otherwise UTF-8 text
+    try:
+        decoded_text.encode("latin-1")
+        with open(output_path, "rb") as f:
+            recovered_bytes = f.read()
+        recovered_is_binary = True
+    except UnicodeEncodeError:
+        with open(output_path, "r", encoding="utf-8", newline="") as f:
+            recovered_text = f.read()
+        recovered_is_binary = False
+
+    if data_bits and (not recovered_bytes if recovered_is_binary else not recovered_text):
         print("Warning: decompressed output is unexpectedly empty.", file=sys.stderr)
     else:
         print(f"Decompression successful. Output written to: {output_path}")
 
     # If verify_path is provided:
     if verify_path is not None:
-        if verify_path.lower().endswith(".docx"):
+        v_ext = verify_path.lower().split('.')[-1]
+        if v_ext == "docx":
             try:
                 original = extract_text_from_docx(verify_path)
-            except Exception as e:
-                print(f"Error: Failed to read Word Document for verification: {e}", file=sys.stderr)
-                sys.exit(1)
-        else:
-            with open(verify_path, "r", encoding="utf-8", newline="") as f:
+                original_is_binary = False
+            except Exception:
+                with open(verify_path, "rb") as f:
+                    original = f.read()
+                original_is_binary = True
+        elif v_ext in ("pdf", "png", "jpg", "jpeg", "gif", "zip", "exe", "bin", "huf"):
+            with open(verify_path, "rb") as f:
                 original = f.read()
-        with open(output_path, "r", encoding="utf-8", newline="") as f:
-            recovered = f.read()
-        if original == recovered:
+            original_is_binary = True
+        else:
+            try:
+                with open(verify_path, "r", encoding="utf-8", newline="") as f:
+                    original = f.read()
+                original_is_binary = False
+            except UnicodeDecodeError:
+                with open(verify_path, "rb") as f:
+                    original = f.read()
+                original_is_binary = True
+
+        if original_is_binary:
+            if not recovered_is_binary:
+                # Need to convert recovered_text back to bytes for comparison
+                recovered_comp = recovered_text.encode("utf-8")
+            else:
+                recovered_comp = recovered_bytes
+            matches = (original == recovered_comp)
+        else:
+            if recovered_is_binary:
+                recovered_comp = recovered_bytes.decode("utf-8", errors="replace")
+            else:
+                recovered_comp = recovered_text
+            matches = (original == recovered_comp)
+
+        if matches:
             print("Verification PASSED: output matches original exactly.")
         else:
             print("Verification FAILED: output does not match original.", file=sys.stderr)

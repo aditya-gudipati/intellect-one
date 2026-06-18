@@ -147,13 +147,19 @@ class HuffmanHTTPRequestHandler(http.server.BaseHTTPRequestHandler):
                     ratio = orig_size / proc_size if proc_size > 0 else 0.0
 
                     # Extract character frequencies
-                    if orig_filename.lower().endswith(".docx"):
+                    ext = orig_filename.lower().split('.')[-1]
+                    if ext == "docx":
                         try:
                             text = extract_text_from_docx(temp_in)
                         except Exception:
-                            text = file_data.decode('utf-8', errors='replace')
+                            text = file_data.decode('latin-1')
+                    elif ext in ("pdf", "png", "jpg", "jpeg", "gif", "zip", "exe", "bin", "huf"):
+                        text = file_data.decode('latin-1')
                     else:
-                        text = file_data.decode('utf-8', errors='replace')
+                        try:
+                            text = file_data.decode('utf-8')
+                        except UnicodeDecodeError:
+                            text = file_data.decode('latin-1')
 
                     frequencies = Counter(text)
                     # Fetch top 10 most common characters
