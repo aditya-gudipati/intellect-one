@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Huffman Studio | Premium File Compression</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="index.css">
+</head>
+<body>
+    <div class="glow-bg"></div>
+    <div class="glow-bg-secondary"></div>
+    
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="url(#logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 17L12 22L22 17" stroke="url(#logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M2 12L12 17L22 12" stroke="url(#logo-grad)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                    <defs>
+                        <linearGradient id="logo-grad" x1="2" y1="2" x2="22" y2="22" gradientUnits="userSpaceOnUse">
+                            <stop offset="0%" stop-color="#a855f7" />
+                            <stop offset="100%" stop-color="#3b82f6" />
+                        </linearGradient>
+                    </defs>
+                </svg>
+                <span class="logo-text">Huffman <span class="gradient-text">Studio</span></span>
+            </div>
+            <div class="header-tag">Intellect Edition</div>
+        </header>
+
+        <!-- Main Workspace -->
+        <main class="workspace">
+            <div class="glass-card main-panel">
+                <!-- Mode Toggle -->
+                <div class="mode-toggle-container">
+                    <div class="mode-indicator" id="mode-indicator"></div>
+                    <button class="mode-btn active" id="btn-compress" data-mode="compress">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14h6v6H4zm10-10h6v6h-6zm-4 4H4v6h6zm10 6h-6v6h6z"/></svg>
+                        Compress
+                    </button>
+                    <button class="mode-btn" id="btn-decompress" data-mode="decompress">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h6v6H4zm10 10h6v6h-6zm-4 4H4v-6h6zm10-6h-6V4h6z"/></svg>
+                        Decompress
+                    </button>
+                </div>
+
+                <!-- Dropzone Area -->
+                <div class="dropzone" id="dropzone">
+                    <input type="file" id="file-input" class="file-input" hidden>
+                    
+                    <div class="dropzone-prompt" id="dropzone-prompt">
+                        <div class="upload-icon-container">
+                            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                                <polyline points="17 8 12 3 7 8"/>
+                                <line x1="12" y1="3" x2="12" y2="15"/>
+                            </svg>
+                        </div>
+                        <h3>Drag & drop your file</h3>
+                        <p class="subtext">or click to browse from device</p>
+                        <p class="formats-hint" id="formats-hint">Supports .txt, .docx files</p>
+                    </div>
+
+                    <div class="file-preview-card" id="file-preview-card" style="display: none;">
+                        <div class="file-icon" id="file-icon-element">
+                            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                                <polyline points="14 2 14 8 20 8"/>
+                            </svg>
+                        </div>
+                        <div class="file-details">
+                            <span class="file-name" id="file-name">filename.txt</span>
+                            <span class="file-size" id="file-size">1.2 KB</span>
+                        </div>
+                        <button class="remove-btn" id="btn-remove-file" title="Remove file">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Action button -->
+                <button class="action-btn" id="btn-process" disabled>
+                    <span id="btn-text">Select a file</span>
+                    <span class="spinner" id="btn-spinner" style="display: none;"></span>
+                </button>
+            </div>
+
+            <!-- Stats/Results Card (hidden initially) -->
+            <div class="glass-card results-panel" id="results-panel" style="display: none;">
+                <div class="results-header">
+                    <div class="success-badge">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                        Success
+                    </div>
+                    <h2 class="panel-title" id="results-title">File Compressed</h2>
+                </div>
+
+                <!-- Stats Grid -->
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <span class="stat-label" id="label-size-orig">Original Size</span>
+                        <span class="stat-value" id="val-size-orig">0 B</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label" id="label-size-proc">Compressed Size</span>
+                        <span class="stat-value" id="val-size-proc">0 B</span>
+                    </div>
+                    <div class="stat-card highlight">
+                        <span class="stat-label" id="label-savings">Space Saved</span>
+                        <span class="stat-value gradient-text" id="val-savings">0%</span>
+                    </div>
+                    <div class="stat-card">
+                        <span class="stat-label" id="label-ratio">Ratio / Factor</span>
+                        <span class="stat-value" id="val-ratio">1.0x</span>
+                    </div>
+                </div>
+
+                <!-- Character Frequency List / Visualization -->
+                <div class="frequency-section" id="frequency-section">
+                    <h3>Character Frequency Map</h3>
+                    <div class="frequency-list-container">
+                        <div class="frequency-list" id="frequency-list">
+                            <!-- Populated dynamically -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Download action -->
+                <div class="download-container">
+                    <button class="download-btn" id="btn-download">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                            <polyline points="7 10 12 15 17 10"/>
+                            <line x1="12" y1="15" x2="12" y2="3"/>
+                        </svg>
+                        Download Output File
+                    </button>
+                </div>
+            </div>
+        </main>
+
+        <footer class="app-footer">
+            <p>Built with standard Python libraries & modern UI principles</p>
+        </footer>
+    </div>
+
+    <script src="index.js"></script>
+</body>
+</html>
